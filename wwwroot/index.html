@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <style>
+
+  </style>
+  <script>
+    async function getTorrent(infoHash) {
+      const resp = await fetch(`/api/torrent/${infoHash}`);
+      document.getElementById('searchResults').innerHTML = '';
+    }
+
+    async function searchTorrents(event) {
+      event.preventDefault();
+
+      const tableBody = document.getElementById('searchResults');
+      tableBody.innerHTML = '';
+
+      const searchString = event.target.searchString.value;
+
+      const resp = await fetch(`/api/search/${searchString}`);
+      const json = await resp.json();
+      
+      for (const result of json) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${FORMAT.BYTES(result.size)}</td>
+          <td>${result.seeders}</td>
+          <td><a href="#" onclick="getTorrent('${result.info_Hash}')">${result.name}</a></td>
+        `;
+        tableBody.appendChild(row);
+      }
+
+      event.target.reset();
+    }
+
+    async function refreshTorrents() {
+      const tableBody = document.getElementById('torrents');
+
+      const resp = await fetch('/api/torrents');
+      const json = await resp.json();
+
+      tableBody.innerHTML = '';
+      for (const result of json) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td title="${FORMAT.BYTES(result.downloaded)} of ${FORMAT.BYTES(result.totalSize)}">${FORMAT.PERCENT(result.progress)}</td>
+          <td>${result.seeders}</td>
+          <td><a href="#" onclick="openDialog('${result.info_Hash}')">${result.name}</a></td>
+        `;
+        tableBody.appendChild(row);
+      }
+    }
+
+    let fileRefreshHandle;
+    async function openDialog(infoHash) {
+      const tableBody = document.getElementById('files');
+      tableBody.innerHTML = '';
+
+      const dialog = document.getElementById('files-dialog');
+      dialog.onclose = () => clearInterval(fileRefreshHandle);
+      dialog.showModal();
+
+      fileRefreshHandle = setInterval(async function () {
+        const resp = await fetch(`/api/torrent/${infoHash}`);
+        const json = await resp.json();
+
+        tableBody.innerHTML = '';
+        for (const result of json.files) {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td title="${FORMAT.BYTES(result.downloaded)} of ${FORMAT.BYTES(result.size)}">${FORMAT.PERCENT(result.progress)}</td>
+            <td>${result.path}</td>
+          `;
+          tableBody.appendChild(row);
+        }
+      }, 2000);
+    }
+
+    const FORMAT = {
+      PERCENT(x) { return x.toFixed(1) + '%'; },
+      BYTES(bytes) {
+        if (bytes < 1000) return `${bytes.toFixed(3)}B`;
+        bytes /= 1000;
+        if (bytes < 1000) return `${bytes.toFixed(3)}KB`;
+        bytes /= 1000;
+        if (bytes < 1000) return `${bytes.toFixed(3)}MB`;
+        bytes /= 1000;
+        if (bytes < 1000) return `${bytes.toFixed(3)}GB`;
+        bytes /= 1000;
+        return `${bytes}TB`;
+      },
+    }
+
+    window.addEventListener('load', function () {
+      setInterval(refreshTorrents, 2000);
+    });
+  </script>
+</head>
+
+<body>
+  <form id="search" onsubmit="searchTorrents(event)">
+    <input name="searchString" type="search">
+    <input type="submit" value="Search">
+  </form>
+  <table>
+    <thead>
+      <th>Size</th>
+      <th>Seeders</th>
+      <th>Name</th>
+    </thead>
+    <tbody id="searchResults"></tbody>
+  </table>
+  <table>
+    <thead>
+      <th>Progress</th>
+      <th>Seeders</th>
+      <th>Name</th>
+    </thead>
+    <tbody id="torrents"></tbody>
+  </table>
+  <dialog id="files-dialog">
+    <table>
+      <thead>
+        <th>Progress</th>
+        <th>Path</th>
+      </thead>
+      <tbody id="files"></tbody>
+    </table>
+  </dialog>
+</body>
+
+</html>
